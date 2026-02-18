@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func RunModel(imgPath string) (string, error) {
+func runModel(imgPath string) (string, error) {
 	cmd := exec.Command("/users/imo059/3203/model/venv/bin/python", "/users/imo059/3203/model/classify.py", imgPath)
 
 	var stdout bytes.Buffer
@@ -28,7 +28,7 @@ func RunModel(imgPath string) (string, error) {
 }
 
 func main() {
-	res, err := RunModel("/share/inf3203/unlabeled_images/199.JPEG")
+	res, err := runModel("/share/inf3203/unlabeled_images/199.JPEG")
 	if err != nil {
 		fmt.Println("Error running model:", err)
 		return
