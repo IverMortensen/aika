@@ -1,3 +1,11 @@
+bin/*
+data/logs/*
+data/queues/*
+
+!data/logs/.gitkeep
+!data/queues/.gitkeep
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
