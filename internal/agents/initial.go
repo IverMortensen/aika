@@ -1,7 +1,9 @@
 package agents
 
 import (
+	"context"
 	"fmt"
+	"log"
 
 	"github.com/IverMortensen/aika/internal/queue"
 	"github.com/IverMortensen/aika/internal/server"
@@ -33,6 +35,7 @@ func NewInitialBehavior(imageDir string, queuePath string, serverAddress string)
 	}, nil
 }
 
-func (ib *InitialBehavior) Run() error {
+func (ib *InitialBehavior) Run(ctx context.Context) error {
+	log.Println("Running...")
 	return nil
 }

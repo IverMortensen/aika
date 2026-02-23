@@ -31,7 +31,7 @@ type Config struct {
 	AgentId string
 	Name    string
 	Type    AgentType
-	logFile string
+	LogFile string
 }
 
 // Methods that all agents must implement
@@ -85,12 +85,12 @@ func (a *Agent) Start() error {
 
 func (a *Agent) setUpLogging() error {
 	// No log file
-	if a.config.logFile == "" {
+	if a.config.LogFile == "" {
 		return nil
 	}
 
 	// Try to create/open log file
-	f, err := os.OpenFile(a.config.logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
+	f, err := os.OpenFile(a.config.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
 	if err != nil {
 		return err
 	}

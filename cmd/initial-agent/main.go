@@ -1,38 +1,40 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
-	"os/exec"
-	"strings"
+	"flag"
+	"log"
+
+	"github.com/IverMortensen/aika/internal/agents"
 )
 
-func runModel(imgPath string) (string, error) {
-	cmd := exec.Command("/users/imo059/3203/model/venv/bin/python", "/users/imo059/3203/model/classify.py", imgPath)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("Model failed: %w\nstderr: %s", err, stderr.String())
-	}
-
-	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	if len(lines) < 2 {
-		return "", fmt.Errorf("Unexpected output format: %s", stdout.String())
-	}
-
-	return lines[len(lines)-1], nil
-}
-
 func main() {
-	res, err := runModel("/share/inf3203/unlabeled_images/199.JPEG")
+	// Parse all flags
+	imageDir := flag.String("image-dir", "/share/inf3203/unlabeled_images/", "Path to image directory.")
+	queuePath := flag.String("queue-path", "./data/queues/initial_queue.log", "Persistent queue path")
+	serverAddress := flag.String("server-address", ":5000", "Server address")
+	agentId := flag.String("agent-id", "initial-agent", "Initial agent's id")
+	logFile := flag.String("log-file", "./data/logs/initial-agent.log", "Path to log file.")
+	flag.Parse()
+
+	// Create behavior of an initial agent
+	behavior, err := agents.NewInitialBehavior(*imageDir, *queuePath, *serverAddress)
 	if err != nil {
-		fmt.Println("Error running model:", err)
-		return
+		log.Fatalf("Failed to create behavior for initial agent: %v", err)
 	}
 
-	fmt.Println("Result:\n" + res)
+	// Set configuration
+	cfg := &agents.Config{
+		AgentId: *agentId,
+		Name:    "Initial-agent",
+		Type:    agents.Initial,
+		LogFile: *logFile,
+	}
+
+	// Construct the agent
+	a := agents.New(cfg, behavior)
+
+	// Start agent
+	if err := a.Start(); err != nil {
+		log.Fatalf("Agent failed: %v", err)
+	}
 }
