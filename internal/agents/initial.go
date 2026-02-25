@@ -12,13 +12,13 @@ import (
 )
 
 type InitialBehavior struct {
-	imagePath string
-	queue     *queue.PersistentQueue
-	server    *http.Server
+	imageDir string
+	queue    *queue.PersistentQueue
+	server   *http.Server
 }
 
 func NewInitialBehavior(imageDir string, queuePath string, serverAddress string) (*InitialBehavior, error) {
-	ib := &InitialBehavior{imagePath: imageDir}
+	ib := &InitialBehavior{imageDir: imageDir}
 
 	// Create the persistent queue
 	pq, err := queue.NewPersistentQueue(imageDir)
@@ -43,21 +43,22 @@ func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received request: %v", r)
 
 	// Get the next file
-	image, err := ib.queue.Pop()
+	image_name, err := ib.queue.Pop()
 	if err != nil {
 		log.Printf("Failed to read next image name: %v", err)
 	}
+	imagePath := ib.imageDir + image_name
 
 	// Mark file as in progress
 
-	// Send file name
+	// Send file path
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"image_name": "%s"}`, image)
+	fmt.Fprintf(w, `{"image_path": "%s"}`, imagePath)
 }
 
 func (ib *InitialBehavior) Run(ctx context.Context) error {
 	// Get the image directory
-	_, err := os.Open(ib.imagePath)
+	_, err := os.Open(ib.imageDir)
 	if err != nil {
 		log.Printf("Failed to read image directory: %v", err)
 	}
