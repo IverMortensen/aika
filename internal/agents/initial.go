@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -39,23 +40,6 @@ func NewInitialBehavior(imageDir string, queuePath string, serverAddress string)
 	return ib, nil
 }
 
-func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request: %v", r)
-
-	// Get the next file
-	image_name, err := ib.queue.Pop()
-	if err != nil {
-		log.Printf("Failed to read next image name: %v", err)
-	}
-	imagePath := ib.imageDir + image_name
-
-	// Mark file as in progress
-
-	// Send file path
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"image_path": "%s"}`, imagePath)
-}
-
 func (ib *InitialBehavior) Run(ctx context.Context) error {
 	// Get the image directory
 	_, err := os.Open(ib.imageDir)
@@ -82,4 +66,27 @@ func (ib *InitialBehavior) Run(ctx context.Context) error {
 	ib.queue.Close()
 
 	return nil
+}
+
+func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Received request: %v", r)
+
+	// Get the next file
+	eof := false
+	imagePath := ""
+	image_name, err := ib.queue.Pop()
+	if err != nil {
+		log.Printf("Failed to read next image name: %v", err)
+	} else if err == io.EOF {
+		log.Printf("No more images.")
+		eof = true
+	} else {
+		imagePath = ib.imageDir + image_name
+	}
+
+	// Mark file as in progress
+
+	// Send file path
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"image_path": "%s", "EOF":"%v"}`, imagePath, eof)
 }
