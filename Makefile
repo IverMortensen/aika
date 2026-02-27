@@ -19,3 +19,13 @@ worker: build-worker
 		-fa-address 0.0.0.0:6000 \
 		-agent-id test_worker \
 		-log-file ./data/logs/test_worker.log
+
+build-final:
+	go build -o ./bin/inf_3203_final_agent ./cmd/final-agent/main.go
+
+final: build-final
+	./bin/inf_3203_final_agent \
+		-queue-path ./data/queues/final_queue.log \
+		-server-address 0.0.0.0:6000 \
+		-agent-id test_initial \
+		-log-file ./data/logs/test_final.log
