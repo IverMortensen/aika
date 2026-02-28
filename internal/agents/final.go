@@ -56,8 +56,16 @@ func (fb *FinalBehavior) Run(ctx context.Context) error {
 }
 
 func (fb *FinalBehavior) handleSubmit(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Received request: method=%s path=%s remote=%s content-type=%s",
+		r.Method,
+		r.URL.Path,
+		r.RemoteAddr,
+		r.Header.Get("Content-Type"),
+	)
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
 
 	var data map[string]string
@@ -79,5 +87,6 @@ func (fb *FinalBehavior) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store label and image path in queue
+	log.Printf("Storing {%v:%v}\n", imgPath, label)
 	fmt.Printf("Storing {%v:%v}\n", imgPath, label)
 }

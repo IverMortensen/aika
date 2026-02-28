@@ -69,7 +69,11 @@ func (ib *InitialBehavior) Run(ctx context.Context) error {
 }
 
 func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request: %v", r)
+	log.Printf("Received request: method=%s path=%s remote=%s",
+		r.Method,
+		r.URL.Path,
+		r.RemoteAddr,
+	)
 
 	// Get the next file
 	eof := false
