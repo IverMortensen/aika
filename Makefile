@@ -3,7 +3,7 @@ VENV_DIR := $(MODEL_DIR)/venv/
 PYTHON := $(VENV_DIR)/bin/python
 PIP := $(VENV_DIR)/bin/pip
 
-.PHONY build-initial initial build-worker worker build-final final
+# .PHONY build-initial initial build-worker worker build-final final
 
 # Create the python venv for the image model
 $(VENV_DIR):

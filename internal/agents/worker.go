@@ -35,11 +35,12 @@ func (wb *WorkerBehavior) Run(ctx context.Context) error {
 	// Should probably say something to the initial agent
 	for {
 		imgPath, err := wb.getImgPath()
-		if err != nil {
+		if err == io.EOF { // No more images
+			log.Printf("No more images. Shutting down...")
+			break
+		} else if err != nil {
 			log.Printf("Failed to get image path from initial server: %v", err)
 			return err
-		} else if err == io.EOF { // No more images
-			break
 		}
 		log.Printf("Received image: %v", imgPath)
 
@@ -59,23 +60,26 @@ func (wb *WorkerBehavior) Run(ctx context.Context) error {
 }
 
 func (wb *WorkerBehavior) getImgPath() (string, error) {
+	// Get image from initial agent
 	resp, err := http.Get("http://" + wb.iaAddress + "/claim")
 	if err != nil {
 		return "", fmt.Errorf("No response: %v", err)
 	}
 	defer resp.Body.Close()
 
+	// Check status code
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("Unexpected status code: %v", resp.StatusCode)
 	}
 
+	// Decode json response
 	var result map[string]string
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("Failed to decode response: %v", err)
 	}
 
-	// Check if there are more images to process
-	if result["eof"] == "true" {
+	// Check if there are no more images to process
+	if result["EOF"] == "true" {
 		return "", io.EOF
 	}
 

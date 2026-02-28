@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -69,21 +70,18 @@ func (ib *InitialBehavior) Run(ctx context.Context) error {
 }
 
 func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request: method=%s path=%s remote=%s",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-	)
+	log.Printf("%s %s %s", r.Method, r.URL.Path, r.RemoteAddr)
 
 	// Get the next file
 	eof := false
 	imagePath := ""
 	image_name, err := ib.queue.Pop()
-	if err != nil {
-		log.Printf("Failed to read next image name: %v", err)
-	} else if err == io.EOF {
+	log.Printf("Popped file: %v\n", image_name)
+	if errors.Is(err, io.EOF) {
 		log.Printf("No more images.")
 		eof = true
+	} else if err != nil {
+		log.Printf("Failed to read next image name: %v", err)
 	} else {
 		imagePath = ib.imageDir + image_name
 	}

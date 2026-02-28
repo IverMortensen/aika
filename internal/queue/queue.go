@@ -2,6 +2,7 @@ package queue
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"sync"
@@ -43,10 +44,11 @@ func NewPersistentQueue(dirPath string) (*PersistentQueue, error) {
 func (pq *PersistentQueue) Pop() (string, error) {
 	// TODO: Don't do this:
 	file, err := pq.dirFile.Readdirnames(1)
-	if err != nil {
+	if err == io.EOF {
+		return "", io.EOF
+	} else if err != nil {
 		return "", fmt.Errorf("Failed to get next file in queue: %v", err)
 	}
-	log.Printf("Popped file: %v", file[0])
 
 	return file[0], nil
 }

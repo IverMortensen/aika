@@ -56,12 +56,7 @@ func (fb *FinalBehavior) Run(ctx context.Context) error {
 }
 
 func (fb *FinalBehavior) handleSubmit(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request: method=%s path=%s remote=%s content-type=%s",
-		r.Method,
-		r.URL.Path,
-		r.RemoteAddr,
-		r.Header.Get("Content-Type"),
-	)
+	log.Printf("%s %s %s", r.Method, r.URL.Path, r.RemoteAddr)
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
