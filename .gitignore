@@ -2,6 +2,8 @@ bin/*
 data/logs/*
 data/queues/*
 
+.DS_Store
+
 !data/logs/.gitkeep
 !data/queues/.gitkeep
 
