@@ -41,6 +41,7 @@ func (wb *WorkerBehavior) Run(ctx context.Context) error {
 		} else if err == io.EOF { // No more images
 			break
 		}
+		log.Printf("Received image: %v", imgPath)
 
 		//	Do the work
 		res, err := runModel(imgPath)
@@ -48,10 +49,10 @@ func (wb *WorkerBehavior) Run(ctx context.Context) error {
 			log.Printf("Failed to run model: %v", err)
 			return err
 		}
+		log.Printf("Result: %v", res)
 
 		//	Send result to final agent
 		wb.postLabel(res, imgPath)
-		log.Printf("Result: %v", res)
 	}
 
 	return nil
@@ -110,7 +111,7 @@ func (wb *WorkerBehavior) postLabel(imgPath string, label string) error {
 }
 
 func runModel(imgPath string) (string, error) {
-	cmd := exec.Command("/users/imo059/3203/model/venv/bin/python", "/users/imo059/3203/model/classify.py", imgPath)
+	cmd := exec.Command("./model/venv/bin/python", "./model/classify.py", imgPath)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
