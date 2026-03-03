@@ -18,7 +18,7 @@ build-initial:
 initial: build-initial
 	./bin/inf_3203_initial_agent \
 		-image-dir ./static/test_images/ \
-		-queue-path ./data/queues/initial_queue.log \
+		-wal-path ./data/wal/initial.wal \
 		-server-address 0.0.0.0:5001 \
 		-agent-id test_initial \
 		-log-file ./data/logs/test_initial.log

@@ -1,6 +1,6 @@
 bin/*
 data/logs/*
-data/queues/*
+data/wal/*
 
 .DS_Store
 

@@ -10,14 +10,14 @@ import (
 func main() {
 	// Parse all flags
 	imageDir := flag.String("image-dir", "/share/inf3203/unlabeled_images/", "Path to image directory.")
-	queuePath := flag.String("queue-path", "./data/queues/initial_queue.log", "Persistent queue path")
+	walPath := flag.String("wal-path", "./data/wal/initial.wal", "Write ahead log path")
 	serverAddress := flag.String("server-address", ":5000", "Server address")
 	agentId := flag.String("agent-id", "initial-agent", "Initial agent's id")
 	logFile := flag.String("log-file", "./data/logs/initial-agent.log", "Path to log file.")
 	flag.Parse()
 
 	// Create behavior of an initial agent
-	behavior, err := agents.NewInitialBehavior(*imageDir, *queuePath, *serverAddress)
+	behavior, err := agents.NewInitialBehavior(*imageDir, *walPath, *serverAddress)
 	if err != nil {
 		log.Fatalf("Failed to create behavior for initial agent: %v", err)
 	}
