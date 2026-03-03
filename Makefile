@@ -3,6 +3,8 @@ VENV_DIR := $(MODEL_DIR)/venv/
 PYTHON := $(VENV_DIR)/bin/python
 PIP := $(VENV_DIR)/bin/pip
 
+WORKER_NAME ?= test_worker
+
 # .PHONY build-initial initial build-worker worker build-final final
 
 # Create the python venv for the image model
@@ -28,8 +30,8 @@ worker: build-worker
 	./bin/inf_3203_worker_agent \
 		-ia-address 0.0.0.0:5001 \
 		-fa-address 0.0.0.0:6000 \
-		-agent-id test_worker \
-		-log-file ./data/logs/test_worker.log
+		-agent-id $(WORKER_NAME) \
+		-log-file ./data/logs/$(WORKER_NAME).log
 
 build-final:
 	go build -o ./bin/inf_3203_final_agent ./cmd/final-agent/main.go
