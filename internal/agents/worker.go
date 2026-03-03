@@ -60,8 +60,10 @@ func (wb *WorkerBehavior) Run(ctx context.Context) error {
 }
 
 func (wb *WorkerBehavior) getImgPath() (string, error) {
+	ia_url := "http://" + wb.iaAddress + "/claim"
+
 	// Get image from initial agent
-	resp, err := http.Get("http://" + wb.iaAddress + "/claim")
+	resp, err := http.Get(ia_url)
 	if err != nil {
 		return "", fmt.Errorf("No response: %v", err)
 	}
@@ -83,6 +85,7 @@ func (wb *WorkerBehavior) getImgPath() (string, error) {
 		return "", io.EOF
 	}
 
+	// Check if an image path was given
 	imgPath, ok := result["image_path"]
 	if !ok {
 		return "", fmt.Errorf("No 'image_path' in response.")
@@ -132,14 +135,4 @@ func runModel(imgPath string) (string, error) {
 	}
 
 	return lines[len(lines)-1], nil
-}
-
-func tmp() {
-	res, err := runModel("/share/inf3203/unlabeled_images/199.JPEG")
-	if err != nil {
-		fmt.Println("Error running model:", err)
-		return
-	}
-
-	fmt.Println("Result:\n" + res)
 }
