@@ -3,8 +3,10 @@ package wal
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"os"
 	"sync"
 )
@@ -16,16 +18,22 @@ type WAL struct {
 }
 
 // Create new or open existing WAL
-func Open(path string) (*WAL, error) {
+// Returns the WAL, if the WAL already exists and any error creating the WAL file
+func Open(path string) (*WAL, bool, error) {
+	// Check if the WAL already exists
+	_, err := os.Stat(path)
+	exists := !errors.Is(err, os.ErrNotExist)
+
+	// Get the file reference and create the file if it doesn't exist
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
-		return nil, err
+		return nil, exists, err
 	}
 
 	return &WAL{
 		file: f,
 		buf:  bufio.NewWriter(f),
-	}, nil
+	}, exists, nil
 }
 
 // Close WAL
@@ -67,7 +75,8 @@ func (w *WAL) Write(data []byte) error {
 	}
 
 	// Make sure the file is written to disk
-	// NOTE: This is slow. Consider batching
+	// NOTE: This is slow. Consider batching.
+	// If not, remove the buffer as it wont be needed
 	return w.file.Sync()
 }
 
@@ -121,6 +130,7 @@ func (w *WAL) truncateTo(offset uint64) error {
 	if err := w.file.Truncate(int64(offset)); err != nil {
 		return fmt.Errorf("failed to truncate WAL to offset %d: %w", offset, err)
 	}
+	w.file.Seek(int64(offset), io.SeekStart)
 	w.buf = bufio.NewWriter(w.file) // reset buffer
 	return w.file.Sync()
 }
