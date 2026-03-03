@@ -1,37 +1,51 @@
 package agents
 
 import (
+	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
-
-	"github.com/IverMortensen/aika/internal/queue"
 )
+
+type Task struct {
+	img [32]byte
+}
 
 type InitialBehavior struct {
 	imageDir string
-	queue    *queue.PersistentQueue
 	server   *http.Server
+	imgIdx   atomic.Int64
+	tasks    []Task
+	// clamedTasks
+	// reclaimedTasks
 }
 
-func NewInitialBehavior(imageDir string, queuePath string, serverAddress string) (*InitialBehavior, error) {
-	ib := &InitialBehavior{imageDir: imageDir}
-
-	// Create the persistent queue
-	pq, err := queue.NewPersistentQueue(imageDir)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create queue: %w", err)
+func NewInitialBehavior(imgDir string, walPath string, serverAddress string) (*InitialBehavior, error) {
+	ib := &InitialBehavior{
+		imageDir: imgDir,
 	}
-	ib.queue = pq
+
+	// Fetch image names
+	imgNames, err := fetchImgNames(imgDir)
+	if err != nil {
+		return &InitialBehavior{}, err
+	}
+
+	// Create and fill the tasks queue
+	tasks := make([]Task, len(imgNames))
+	for i, name := range imgNames {
+		copy(tasks[i].img[:], name)
+	}
+	ib.tasks = tasks
 
 	// Create the server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/claim", ib.handleClaim)
+	mux.HandleFunc("/complete", ib.handleComplete)
 
 	ib.server = &http.Server{
 		Addr:    serverAddress,
@@ -42,14 +56,6 @@ func NewInitialBehavior(imageDir string, queuePath string, serverAddress string)
 }
 
 func (ib *InitialBehavior) Run(ctx context.Context) error {
-	// Get the image directory
-	_, err := os.Open(ib.imageDir)
-	if err != nil {
-		log.Printf("Failed to read image directory: %v", err)
-	}
-
-	// Add images to queue
-
 	// Start server
 	go func() {
 		if err := ib.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -64,9 +70,35 @@ func (ib *InitialBehavior) Run(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	ib.server.Shutdown(shutdownCtx)
-	ib.queue.Close()
 
 	return nil
+}
+
+func fetchImgNames(imgDir string) ([]string, error) {
+	f, err := os.Open(imgDir)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	names, err := f.Readdirnames(-1)
+	if err != nil {
+		return nil, err
+	}
+
+	return names, nil
+}
+
+func (ib *InitialBehavior) pop() (string, bool) {
+	i := ib.imgIdx.Add(1) - 1
+	if int(i) >= len(ib.tasks) {
+		log.Printf("i: %v  q: %v", i, len(ib.tasks))
+		return "", false
+	}
+
+	img := string(bytes.Trim(ib.tasks[i].img[:], "\x00"))
+
+	return img, true
 }
 
 func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
@@ -75,20 +107,28 @@ func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
 	// Get the next file
 	eof := false
 	imagePath := ""
-	image_name, err := ib.queue.Pop()
+	image_name, ok := ib.pop()
 	log.Printf("Popped file: %v\n", image_name)
-	if errors.Is(err, io.EOF) {
+	if !ok {
 		log.Printf("No more images.")
 		eof = true
-	} else if err != nil {
-		log.Printf("Failed to read next image name: %v", err)
 	} else {
 		imagePath = ib.imageDir + image_name
 	}
 
-	// Mark file as in progress
+	// Add image to claimed
 
 	// Send file path
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"image_path": "%s", "EOF":"%v"}`, imagePath, eof)
+}
+
+func (ib *InitialBehavior) handleComplete(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s %s %s", r.Method, r.URL.Path, r.RemoteAddr)
+
+	// Check that method is POST
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 }
