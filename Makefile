@@ -15,7 +15,7 @@ $(VENV_DIR):
 build-initial:
 	go build -o ./bin/inf_3203_initial_agent ./cmd/initial-agent/main.go
 
-initial: build-initial
+initial: clean build-initial
 	./bin/inf_3203_initial_agent \
 		-image-dir ./static/test_images/ \
 		-wal-path ./data/wal/initial.wal \
@@ -43,3 +43,6 @@ final: build-final
 		-agent-id test_initial \
 		-log-file ./data/logs/test_final.log
 
+clean:
+	rm -f data/logs/*.log
+	rm -f data/wal/*.wal
