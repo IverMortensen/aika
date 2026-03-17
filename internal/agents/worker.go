@@ -10,15 +10,18 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 type WorkerBehavior struct {
 	iaAddress string
 	faAddress string
+	client    *http.Client
 }
 
 func NewWorkerBehavior(iaAddress string, faAddress string) (*WorkerBehavior, error) {
 	wb := &WorkerBehavior{
+		client:    &http.Client{Timeout: 10 * time.Second},
 		iaAddress: iaAddress,
 		faAddress: faAddress,
 	}
@@ -52,8 +55,16 @@ func (wb *WorkerBehavior) Run(ctx context.Context) error {
 		}
 		log.Printf("Result: %v", res)
 
-		//	Send result to final agent
-		wb.postLabel(res, imgPath)
+		// Send result to final agent
+		if err = wb.postLabel(imgPath, res); err != nil {
+			return err
+		}
+
+		// Send task complete to initial agent
+		if err = wb.postComplete(imgPath); err != nil {
+			return err
+		}
+
 	}
 
 	return nil
@@ -95,25 +106,30 @@ func (wb *WorkerBehavior) getImgPath() (string, error) {
 }
 
 // Send the label and the path of a classified image to a final agent
-func (wb *WorkerBehavior) postLabel(imgPath string, label string) error {
-	fa_url := "http://" + wb.faAddress + "/submit"
+func (wb *WorkerBehavior) postLabel(imgPath, label string) error {
+	log.Printf("POST /submit %v", imgPath)
+	return wb.postJSON("http://"+wb.faAddress+"/submit", map[string]string{"image_path": imgPath, "label": label})
+}
 
-	// Format message containing path and label into json
-	data := map[string]string{"image_path": imgPath, "label": label}
+// Send task complete to initial agent
+func (wb *WorkerBehavior) postComplete(imgPath string) error {
+	log.Printf("POST /complete %v", imgPath)
+	return wb.postJSON("http://"+wb.iaAddress+"/complete", map[string]string{"image_path": imgPath})
+}
+
+func (wb *WorkerBehavior) postJSON(url string, data map[string]string) error {
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
-		return fmt.Errorf("Failed to encode result: %v", err)
+		return fmt.Errorf("failed to encode body: %v", err)
 	}
-
-	// Send message
-	resp, err := http.Post(fa_url, "application/json", bytes.NewBuffer(jsonBytes))
+	resp, err := wb.client.Post(url, "application/json", bytes.NewBuffer(jsonBytes))
 	if err != nil {
-		return fmt.Errorf("Failed to send label: %v", err)
+		return fmt.Errorf("failed to post to %s: %v", url, err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Unexpected status code: %v", resp.StatusCode)
+		return fmt.Errorf("unexpected status code: %v", resp.StatusCode)
 	}
-
 	return nil
 }
 
