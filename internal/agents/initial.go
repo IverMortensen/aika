@@ -17,13 +17,14 @@ import (
 	"github.com/IverMortensen/aika/internal/wal"
 )
 
+// TODO: Find reasonable values bellow
 const taskTTL int64 = 5        // seconds
 const reclaimIterval int64 = 6 // seconds
+const expiredQueueSize int64 = 100
 
 const (
-	unclaimed uint8 = iota
-	claimed
-	reclaimed
+	claimed uint8 = iota
+	expired
 	complete
 )
 
@@ -43,14 +44,14 @@ type WalEntry struct {
 }
 
 type InitialBehavior struct {
-	imageDir       string
-	server         *http.Server
-	wal            *wal.WAL
-	imgIdx         atomic.Int64
-	tasks          []Task
-	mu             sync.Mutex
-	claimedTasks   map[string]*ClaimedTask
-	reclaimedTasks map[string]*ClaimedTask
+	imageDir     string
+	server       *http.Server
+	wal          *wal.WAL
+	imgIdx       atomic.Int64
+	tasks        []Task
+	mu           sync.Mutex
+	claimedTasks map[string]*ClaimedTask
+	expiredQueue chan *ClaimedTask
 }
 
 func NewInitialBehavior(imgDir string, walPath string, serverAddress string) (*InitialBehavior, error) {
@@ -78,9 +79,9 @@ func NewInitialBehavior(imgDir string, walPath string, serverAddress string) (*I
 	}
 	ib.tasks = tasks
 
-	// Create claimed and unclaimed tasks
+	// Create claimed and reclaimed tasks
 	ib.claimedTasks = make(map[string]*ClaimedTask)
-	ib.reclaimedTasks = make(map[string]*ClaimedTask)
+	ib.expiredQueue = make(chan *ClaimedTask, expiredQueueSize)
 
 	// TODO: Replay WAL
 	// - Find current task list index
@@ -109,7 +110,7 @@ func (ib *InitialBehavior) Run(ctx context.Context) error {
 
 	// Run periodic function for reclaiming expired tasks
 	stop := make(chan struct{})
-	go ib.periodicReclaimExpiredTasks(time.Duration(reclaimIterval)*time.Second, stop)
+	go ib.periodicExpireClaimedTasks(time.Duration(reclaimIterval)*time.Second, stop)
 
 	// Wait for context to cancel
 	<-ctx.Done()
@@ -152,27 +153,48 @@ func (ib *InitialBehavior) pop() (string, bool) {
 
 // NOTE: Remove this
 func printEntry(data []byte) error {
-	ct := ClaimedTaskFromBytes(data)
-	fmt.Printf("CT from WAL: %v\n", ct)
+	if len(data) == 0 {
+		return fmt.Errorf("empty entry")
+	}
+	entryType := data[0]
+	payload := data[1:]
+
+	switch entryType {
+	case claimed:
+		ct := claimedTaskFromBytes(payload)
+		fmt.Printf("CLAIMED: img=%s created=%d TTL=%d\n", ct.img, ct.created, ct.TTL)
+	case complete:
+		fmt.Printf("COMPLETE: img=%s\n", string(payload))
+	default:
+		fmt.Printf("UNKNOWN entry type: %d\n", entryType)
+	}
 	return nil
 }
 
 func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s %s %s", r.Method, r.URL.Path, r.RemoteAddr)
 
-	// Get the next image from task list
-	imgName, ok := ib.pop()
-	log.Printf("Popped file: %v\n", imgName)
-	if !ok {
-		// TODO: If task list empty AND reclaimed tasks is not empty, get a task from reclaimed
-		// else
-		log.Printf("No more images.")
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"image_path": "%s", "EOF":"%v"}`, "", true)
-		return
-	}
-	imagePath := ib.imageDir + imgName
+	var imgName string
 
+	// Try to get a task from main task array
+	imgName, ok := ib.pop()
+	if !ok {
+		// Task array empty
+		select {
+		// Try to get a task from expired task queue
+		case task := <-ib.expiredQueue:
+			imgName = task.img
+		default:
+			// No more tasks
+			log.Printf("No more images.")
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"image_path": "%s", "EOF":"%v"}`, "", true)
+			return
+		}
+	}
+	log.Printf("CLAIM: %v %v\n", imgName, r.Host)
+
+	imagePath := ib.imageDir + imgName
 	now := time.Now().Unix()
 
 	// Add task to claimed tasks
@@ -234,23 +256,23 @@ func (ib *InitialBehavior) handleComplete(w http.ResponseWriter, r *http.Request
 	delete(ib.claimedTasks, imgName)
 }
 
-// Periodic function for reclaiming expired claimed tasks
-func (ib *InitialBehavior) periodicReclaimExpiredTasks(interval time.Duration, stop <-chan struct{}) {
+// Periodic function for expiring claimed tasks to be claimed again
+func (ib *InitialBehavior) periodicExpireClaimedTasks(interval time.Duration, stop <-chan struct{}) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			ib.reclaimExpiredTasks()
+			ib.expireClaimedTasks()
 		case <-stop:
 			return
 		}
 	}
 }
 
-// Loop through claimed tasks and move any expired tasks to reclaimed tasks
-func (ib *InitialBehavior) reclaimExpiredTasks() error {
+// Move any claimed tasks that have expired to the expiredQueue so they can be reclaimed
+func (ib *InitialBehavior) expireClaimedTasks() error {
 	ib.mu.Lock() // Lock here in case the periodic function runs to often
 	defer ib.mu.Unlock()
 
@@ -262,20 +284,20 @@ func (ib *InitialBehavior) reclaimExpiredTasks() error {
 	for key, task := range ib.claimedTasks {
 		fmt.Printf("%v", task)
 		if now-task.created >= task.TTL {
+			select {
+			case ib.expiredQueue <- task:
+			default:
+				// Channel full, leave task in claimedTasks
+				continue
+			}
+
 			fmt.Printf(" TTL Expired")
 			log.Printf("CLAIM EXPIRED: %v", key)
-			ib.reclaimedTasks[key] = task
 			delete(ib.claimedTasks, key)
 		}
 		fmt.Printf("\n")
 	}
 
-	// Print reclaimed tasks
-	fmt.Println("Reclaimed tasks:")
-	for key, task := range ib.reclaimedTasks {
-		fmt.Printf("%v: %+v\n", key, task)
-	}
-	fmt.Printf("\n")
 	return nil
 }
 
@@ -291,7 +313,7 @@ func (w WalEntry) toBytes() []byte {
 	return append([]byte{w.entryType}, w.data...)
 }
 
-func ClaimedTaskFromBytes(b []byte) ClaimedTask {
+func claimedTaskFromBytes(b []byte) ClaimedTask {
 	img := string(bytes.Trim(b[:32], "\x00"))
 	created := int64(binary.LittleEndian.Uint64(b[32:40]))
 	ttl := int64(binary.LittleEndian.Uint64(b[40:48]))
