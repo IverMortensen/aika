@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+const backoffDuration time.Duration = 2 * time.Second
+const maxBackoffDuration time.Duration = 60 * time.Second
+
 type WorkerBehavior struct {
 	iaAddress string
 	faAddress string
@@ -37,17 +40,29 @@ func (wb *WorkerBehavior) Run(ctx context.Context) error {
 	// TODO: Find a way to handle the errors in the loop.
 	// Should probably say something to the initial agent
 	for {
-		imgPath, err := wb.getImgPath()
-		if err == io.EOF { // No more images
+		// Get an image path from initial agent
+		var imgPath string
+		var eof bool
+		err := wb.retryWithBackoff(func() error { // Retry on error
+			var e error
+			imgPath, e = wb.getImgPath()
+			if e == io.EOF { // Don't want to retry if there are no more images
+				eof = true
+				return nil
+			}
+			return e
+		})
+		if eof {
 			log.Printf("No more images. Shutting down...")
 			break
-		} else if err != nil {
+		}
+		if err != nil {
 			log.Printf("Failed to get image path from initial server: %v", err)
 			return err
 		}
 		log.Printf("Received image: %v", imgPath)
 
-		//	Do the work
+		// Do the work
 		res, err := runModel(imgPath)
 		if err != nil {
 			log.Printf("Failed to run model: %v", err)
@@ -55,16 +70,15 @@ func (wb *WorkerBehavior) Run(ctx context.Context) error {
 		}
 		log.Printf("Result: %v", res)
 
-		// Send result to final agent
-		if err = wb.postLabel(imgPath, res); err != nil {
-			return err
-		}
+		// Send result to final agent (blocking)
+		wb.retryWithBackoff(func() error {
+			return wb.postLabel(imgPath, res)
+		})
 
-		// Send task complete to initial agent
-		if err = wb.postComplete(imgPath); err != nil {
-			return err
-		}
-
+		// Send task complete to initial agent (blocking)
+		wb.retryWithBackoff(func() error {
+			return wb.postComplete(imgPath)
+		})
 	}
 
 	return nil
@@ -151,4 +165,21 @@ func runModel(imgPath string) (string, error) {
 	}
 
 	return lines[len(lines)-1], nil
+}
+
+// TODO: Add retry to calls to final agent as well
+func (wb *WorkerBehavior) retryWithBackoff(fn func() error) error {
+	backoff := backoffDuration
+	for {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		log.Printf("Failed, retrying in %v: %v", backoff, err)
+		time.Sleep(backoff)
+		backoff *= 2
+		if backoff > maxBackoffDuration {
+			backoff = maxBackoffDuration
+		}
+	}
 }
