@@ -6,22 +6,52 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"sync"
 	"time"
 
-	"github.com/IverMortensen/aika/internal/queue"
+	"github.com/IverMortensen/aika/internal/wal"
 )
 
-type FinalBehavior struct {
-	queue  *queue.PersistentQueue
-	server *http.Server
+type faWalEntry struct {
+	ImgPath string `json:"img_path"`
+	Label   string `json:"label"`
 }
 
-func NewFinalBehavior(queuePath string, serverAddress string) (*FinalBehavior, error) {
-	fb := &FinalBehavior{}
+// TODO: Find good values for these:
+const flushTreeInterval = 5
+const dedupMapSize = 100
+const treeSize = 100
 
-	// Create queue
-	// pq := queue.NewPersistentQueue()
-	// fb.queue = queue
+type FinalBehavior struct {
+	server     *http.Server
+	wal        *wal.WAL
+	dedupMap   map[string]string
+	tree       map[string][]string
+	mu         sync.RWMutex
+	outputPath string
+}
+
+func NewFinalBehavior(outputPath string, walPath string, serverAddress string) (*FinalBehavior, error) {
+	fb := &FinalBehavior{
+		outputPath: outputPath,
+	}
+
+	// Create/open the write ahead log
+	wal, _, err := wal.Open(walPath)
+	if err != nil {
+		return &FinalBehavior{}, err
+	}
+	fb.wal = wal
+
+	// Create deduplication map and in-memory tree
+	fb.dedupMap = make(map[string]string, dedupMapSize)
+	fb.tree = make(map[string][]string, treeSize)
+
+	// Replay WAL
+	if err := fb.replayWAL(); err != nil {
+		log.Printf("Error occurred while replaying WAL: %v", err)
+	}
 
 	// Create server
 	mux := http.NewServeMux()
@@ -43,16 +73,35 @@ func (fb *FinalBehavior) Run(ctx context.Context) error {
 		}
 	}()
 
+	// Run periodic function for writing in-memory results tree to file
+	stop := make(chan struct{})
+	go fb.periodicFlushTree(time.Duration(flushTreeInterval)*time.Second, stop)
+
 	// Wait for context to cancel
 	<-ctx.Done()
 
-	// Shutdown server and close the queue
+	// Clean shutdown of final agent
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	close(stop)
+	fb.flushTree() // Final flush before shutdown
 	defer cancel()
 	fb.server.Shutdown(shutdownCtx)
-	fb.queue.Close()
 
 	return nil
+}
+
+func (fb *FinalBehavior) replayWAL() error {
+	return fb.wal.Replay(func(data []byte) error {
+		var entry faWalEntry
+		if err := json.Unmarshal(data, &entry); err != nil {
+			return err
+		}
+		if _, exists := fb.dedupMap[entry.ImgPath]; !exists {
+			fb.dedupMap[entry.ImgPath] = entry.Label
+			fb.tree[entry.Label] = append(fb.tree[entry.Label], entry.ImgPath)
+		}
+		return nil
+	})
 }
 
 func (fb *FinalBehavior) handleSubmit(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +130,78 @@ func (fb *FinalBehavior) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store label and image path in queue
-	log.Printf("Storing {%v:%v}\n", imgPath, label)
-	fmt.Printf("Storing {%v:%v}\n", imgPath, label)
+	// Check if already submitted
+	fb.mu.RLock()
+	_, exists := fb.dedupMap[imgPath]
+	fb.mu.RUnlock()
+	if exists {
+		log.Printf("Duplicate received: %v", imgPath)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Write submit to WAL
+	if err := fb.appendToWAL(imgPath, label); err != nil {
+		log.Printf("WAL write failed: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("SUBMIT: {%v:%v}\n", imgPath, label)
+	fmt.Printf("SUBMIT: {%v:%v}\n", imgPath, label)
+
+	// Store submit in dedup map and in-memory results tree
+	fb.mu.Lock()
+	if _, exists := fb.dedupMap[imgPath]; !exists {
+		fb.dedupMap[imgPath] = label
+		fb.tree[label] = append(fb.tree[label], imgPath)
+	}
+	fb.mu.Unlock()
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (fb *FinalBehavior) appendToWAL(imgPath string, label string) error {
+	// TODO: Final agent uses json while initial agent uses bytes. Find a common encoding
+	entry := faWalEntry{ImgPath: imgPath, Label: label}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	return fb.wal.Write(data)
+}
+
+// Periodic function for storing results to output file
+// NOTE: Pattern used in initial agent. Make a common function
+func (fb *FinalBehavior) periodicFlushTree(interval time.Duration, stop <-chan struct{}) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			fb.flushTree()
+		case <-stop:
+			return
+		}
+	}
+}
+
+// Flush the in-memory tree to file
+func (fb *FinalBehavior) flushTree() {
+	// Make a copy and write the copy to disk to not hold the lock while writing
+	fb.mu.RLock()
+	snapshot := make(map[string][]string, len(fb.tree))
+	for k, v := range fb.tree {
+		cp := make([]string, len(v))
+		copy(cp, v)
+		snapshot[k] = cp
+	}
+	fb.mu.RUnlock()
+
+	// Encode, format and write the data to disk
+	// Temp file is used so the actual file never has partial written data
+	data, _ := json.MarshalIndent(snapshot, "", "  ")
+	tmp := fb.outputPath + ".tmp"
+	os.WriteFile(tmp, data, 0644)
+	os.Rename(tmp, fb.outputPath)
 }

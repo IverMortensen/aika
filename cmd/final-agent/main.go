@@ -9,14 +9,15 @@ import (
 
 func main() {
 	// Parse all flags
-	queuePath := flag.String("queue-path", "./data/queues/final.log", "Persistent queue path")
+	outputPath := flag.String("output-path", "./data/result.json", "Path to output json file")
+	walPath := flag.String("wal-path", "./data/wal/final.wal", "Write ahead log path")
 	serverAddress := flag.String("server-address", ":6000", "Server address")
 	agentId := flag.String("agent-id", "final-agent", "Final agent's id")
 	logFile := flag.String("log-file", "./data/logs/final-agent.log", "Path to log file.")
 	flag.Parse()
 
 	// Create behavior of an final agent
-	behavior, err := agents.NewFinalBehavior(*queuePath, *serverAddress)
+	behavior, err := agents.NewFinalBehavior(*outputPath, *walPath, *serverAddress)
 	if err != nil {
 		log.Fatalf("Failed to create behavior for final agent: %v", err)
 	}

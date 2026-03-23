@@ -15,7 +15,7 @@ $(VENV_DIR):
 build-initial:
 	go build -o ./bin/inf_3203_initial_agent ./cmd/initial-agent/main.go
 
-initial: clean build-initial
+initial: build-initial
 	./bin/inf_3203_initial_agent \
 		-image-dir ./static/test_images/ \
 		-wal-path ./data/wal/initial.wal \
@@ -38,7 +38,8 @@ build-final:
 
 final: build-final
 	./bin/inf_3203_final_agent \
-		-queue-path ./data/queues/final_queue.log \
+		-output-path ./data/result.json \
+		-wal-path ./data/wal/final.wal \
 		-server-address 0.0.0.0:6000 \
 		-agent-id test_initial \
 		-log-file ./data/logs/test_final.log
@@ -46,3 +47,4 @@ final: build-final
 clean:
 	rm -f data/logs/*.log
 	rm -f data/wal/*.wal
+	rm data/result.json
