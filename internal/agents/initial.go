@@ -24,7 +24,7 @@ const expiredQueueSize int64 = 100
 
 const (
 	claimed uint8 = iota
-	expired
+	reclaimed
 	complete
 )
 
@@ -83,9 +83,8 @@ func NewInitialBehavior(imgDir string, walPath string, serverAddress string) (*I
 	ib.claimedTasks = make(map[string]*ClaimedTask)
 	ib.expiredQueue = make(chan *ClaimedTask, expiredQueueSize)
 
-	// TODO: Replay WAL
-	// - Find current task list index
-	// - Reconstruct claimed and reclaimed tasks
+	// Replay the WAL
+	ib.replayWAL()
 
 	// Create the server
 	mux := http.NewServeMux()
@@ -120,6 +119,41 @@ func (ib *InitialBehavior) Run(ctx context.Context) error {
 	close(stop)
 	defer cancel()
 	ib.server.Shutdown(shutdownCtx)
+
+	return nil
+}
+
+func (ib *InitialBehavior) replayWAL() error {
+	log.Printf("Replaying WAL...")
+	var maxIdx int64
+
+	// Replay runs the provided function once per entry in the WAL
+	err := ib.wal.Replay(func(data []byte) error {
+		if len(data) == 0 {
+			return fmt.Errorf("empty entry")
+		}
+		entryType := data[0]
+		payload := data[1:]
+
+		switch entryType {
+		case claimed:
+			ct := claimedTaskFromBytes(payload)
+			ib.claimedTasks[ct.img] = &ct
+			maxIdx++ // Update task array index
+		case reclaimed:
+			ct := claimedTaskFromBytes(payload)
+			ib.claimedTasks[ct.img] = &ct
+		case complete:
+			delete(ib.claimedTasks, string(payload))
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	ib.imgIdx.Store(maxIdx) // Set the index of the task array
+	log.Printf("Finished replaying WAL")
 
 	return nil
 }
@@ -165,6 +199,9 @@ func printEntry(data []byte) error {
 		fmt.Printf("CLAIMED: img=%s created=%d TTL=%d\n", ct.img, ct.created, ct.TTL)
 	case complete:
 		fmt.Printf("COMPLETE: img=%s\n", string(payload))
+	case reclaimed:
+		ct := claimedTaskFromBytes(payload)
+		fmt.Printf("RECLAIMED: img=%s created=%d TTL=%d\n", ct.img, ct.created, ct.TTL)
 	default:
 		fmt.Printf("UNKNOWN entry type: %d\n", entryType)
 	}
@@ -175,6 +212,7 @@ func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s %s %s", r.Method, r.URL.Path, r.RemoteAddr)
 
 	var imgName string
+	entryType := claimed
 
 	// Try to get a task from main task array
 	imgName, ok := ib.pop()
@@ -184,6 +222,7 @@ func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
 		// Try to get a task from expired task queue
 		case task := <-ib.expiredQueue:
 			imgName = task.img
+			entryType = reclaimed
 		default:
 			// No more tasks
 			log.Printf("No more images.")
@@ -203,12 +242,15 @@ func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
 		TTL:     taskTTL, // Add 10 seconds of TTL
 		created: now,
 	}
+
+	ib.mu.Lock()
 	ib.claimedTasks[imgName] = &claimedTask
+	ib.mu.Unlock()
 	log.Printf("Moved %v to claimed tasks", imgName)
 
 	// Add claimed task to WAL entry
 	entry := WalEntry{
-		entryType: claimed,
+		entryType: entryType,
 		data:      claimedTask.toBytes(),
 	}
 	ib.wal.Write(entry.toBytes())
@@ -253,7 +295,9 @@ func (ib *InitialBehavior) handleComplete(w http.ResponseWriter, r *http.Request
 	ib.wal.Write(entry.toBytes())
 
 	// Remove task from claimed tasks
+	ib.mu.Lock()
 	delete(ib.claimedTasks, imgName)
+	ib.mu.Unlock()
 }
 
 // Periodic function for expiring claimed tasks to be claimed again
@@ -273,7 +317,7 @@ func (ib *InitialBehavior) periodicExpireClaimedTasks(interval time.Duration, st
 
 // Move any claimed tasks that have expired to the expiredQueue so they can be reclaimed
 func (ib *InitialBehavior) expireClaimedTasks() error {
-	ib.mu.Lock() // Lock here in case the periodic function runs to often
+	ib.mu.Lock()
 	defer ib.mu.Unlock()
 
 	// NOTE: Remove all the prints
