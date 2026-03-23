@@ -21,6 +21,9 @@ import (
 const taskTTL int64 = 5        // seconds
 const reclaimIterval int64 = 6 // seconds
 const expiredQueueSize int64 = 100
+const claimedTasksSize int64 = 100
+
+const maxPathLen uint8 = 32 // TODO: use this
 
 const (
 	claimed uint8 = iota
@@ -29,7 +32,7 @@ const (
 )
 
 type Task struct {
-	img [32]byte
+	img [maxPathLen]byte
 }
 
 type ClaimedTask struct {
@@ -38,7 +41,7 @@ type ClaimedTask struct {
 	TTL     int64 // TODO: TTL does not need to be in the struct
 }
 
-type WalEntry struct {
+type walEntry struct {
 	entryType uint8
 	data      []byte
 }
@@ -80,7 +83,7 @@ func NewInitialBehavior(imgDir string, walPath string, serverAddress string) (*I
 	ib.tasks = tasks
 
 	// Create claimed and reclaimed tasks
-	ib.claimedTasks = make(map[string]*ClaimedTask)
+	ib.claimedTasks = make(map[string]*ClaimedTask, claimedTasksSize)
 	ib.expiredQueue = make(chan *ClaimedTask, expiredQueueSize)
 
 	// Replay the WAL
@@ -236,24 +239,25 @@ func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
 	imagePath := ib.imageDir + imgName
 	now := time.Now().Unix()
 
-	// Add task to claimed tasks
+	// Create a claimed task
 	claimedTask := ClaimedTask{
 		img:     imgName,
 		TTL:     taskTTL, // Add 10 seconds of TTL
 		created: now,
 	}
 
-	ib.mu.Lock()
-	ib.claimedTasks[imgName] = &claimedTask
-	ib.mu.Unlock()
-	log.Printf("Moved %v to claimed tasks", imgName)
-
 	// Add claimed task to WAL entry
-	entry := WalEntry{
+	entry := walEntry{
 		entryType: entryType,
 		data:      claimedTask.toBytes(),
 	}
 	ib.wal.Write(entry.toBytes())
+
+	// Add task to claimed tasks
+	ib.mu.Lock()
+	ib.claimedTasks[imgName] = &claimedTask
+	ib.mu.Unlock()
+	log.Printf("Moved %v to claimed tasks", imgName)
 
 	// Send file path
 	w.Header().Set("Content-Type", "application/json")
@@ -288,7 +292,7 @@ func (ib *InitialBehavior) handleComplete(w http.ResponseWriter, r *http.Request
 	}
 
 	// Add WAL entry that task is complete
-	entry := WalEntry{
+	entry := walEntry{
 		entryType: complete,
 		data:      []byte(imgName),
 	}
@@ -353,7 +357,8 @@ func (ct *ClaimedTask) toBytes() []byte {
 	return buf
 }
 
-func (w WalEntry) toBytes() []byte {
+// TODO: Move to common file
+func (w walEntry) toBytes() []byte {
 	return append([]byte{w.entryType}, w.data...)
 }
 
