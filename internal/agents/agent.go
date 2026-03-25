@@ -17,13 +17,12 @@ const (
 	Final   AgentType = "final"
 )
 
-// Life cycle of all agents
 type Agent struct {
-	id        string
 	config    *Config
 	behaviour Behaviour
 	ctx       context.Context
 	cancel    context.CancelFunc
+	logFile   *os.File
 }
 
 // Configurations common to all agents
@@ -47,7 +46,6 @@ func New(config *Config, behaviour Behaviour) *Agent {
 
 	// Construct and return the agent
 	return &Agent{
-		id:        config.AgentId,
 		config:    config,
 		behaviour: behaviour,
 		ctx:       ctx,
@@ -64,6 +62,7 @@ func (a *Agent) Start() error {
 	// Create a signal channel
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
 
 	// Run the agent
 	errChan := make(chan error, 1)
@@ -74,10 +73,18 @@ func (a *Agent) Start() error {
 	// Wait for any signals
 	select {
 	case err := <-errChan:
+		a.cancel()
 		log.Printf("[%s] Stopped: %v", a.config.Name, err)
 	case sig := <-sigChan:
 		log.Printf("[%s] Received signal %v, shutting down...", a.config.Name, sig)
 		a.cancel()
+		err := <-errChan // Wait for run to finish
+		log.Printf("[%s] Stopped: %v", a.config.Name, err)
+	}
+
+	// Close log file
+	if a.logFile != nil {
+		a.logFile.Close()
 	}
 
 	return nil
@@ -96,6 +103,7 @@ func (a *Agent) setUpLogging() error {
 	}
 
 	// Set logger to output to log file
+	a.logFile = f
 	log.SetOutput(f)
 
 	return nil
