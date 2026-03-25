@@ -7,7 +7,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
+
+const processTTL = 24 * time.Hour
 
 type AgentType string
 
@@ -20,8 +23,6 @@ const (
 type Agent struct {
 	config    *Config
 	behaviour Behaviour
-	ctx       context.Context
-	cancel    context.CancelFunc
 	logFile   *os.File
 }
 
@@ -41,15 +42,10 @@ type Behaviour interface {
 /* Functions that all agents use */
 
 func New(config *Config, behaviour Behaviour) *Agent {
-	// Create a context to be able to cancel the process
-	ctx, cancel := context.WithCancel(context.Background())
-
 	// Construct and return the agent
 	return &Agent{
 		config:    config,
 		behaviour: behaviour,
-		ctx:       ctx,
-		cancel:    cancel,
 	}
 }
 
@@ -59,6 +55,11 @@ func (a *Agent) Start() error {
 		return fmt.Errorf("failed to set up logging: %w", err)
 	}
 
+	// Create a context to be able to cancel the process
+	// If the TTL expires the process is canceled automatically
+	ctx, cancel := context.WithTimeout(context.Background(), processTTL)
+	defer cancel()
+
 	// Create a signal channel
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -67,19 +68,23 @@ func (a *Agent) Start() error {
 	// Run the agent
 	errChan := make(chan error, 1)
 	go func() {
-		errChan <- a.behaviour.Run(a.ctx)
+		errChan <- a.behaviour.Run(ctx)
 	}()
 
 	// Wait for any signals
 	select {
 	case err := <-errChan:
-		a.cancel()
+		cancel()
 		log.Printf("[%s] Stopped: %v", a.config.Name, err)
 	case sig := <-sigChan:
 		log.Printf("[%s] Received signal %v, shutting down...", a.config.Name, sig)
-		a.cancel()
+		cancel()
 		err := <-errChan // Wait for run to finish
 		log.Printf("[%s] Stopped: %v", a.config.Name, err)
+	case <-ctx.Done():
+		log.Printf("[%s] TTL expired, shutting down...", a.config.Name)
+		cancel()
+		<-errChan
 	}
 
 	// Close log file
