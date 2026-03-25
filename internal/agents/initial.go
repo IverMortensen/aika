@@ -227,6 +227,16 @@ func (ib *InitialBehavior) handleClaim(w http.ResponseWriter, r *http.Request) {
 			imgName = task.img
 			entryType = reclaimed
 		default:
+			// If there are only claimed tasks left, tell worker to
+			// come back later to check if they got finished or not
+			ib.mu.Lock()
+			remaining := len(ib.claimedTasks)
+			ib.mu.Unlock()
+			if remaining > 0 {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
 			// No more tasks
 			log.Printf("No more images.")
 			w.Header().Set("Content-Type", "application/json")

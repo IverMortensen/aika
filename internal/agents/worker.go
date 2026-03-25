@@ -94,6 +94,11 @@ func (wb *WorkerBehavior) getImgPath() (string, error) {
 	}
 	defer resp.Body.Close()
 
+	// Check if there are unclaimed tasks/images left
+	if resp.StatusCode == http.StatusNoContent {
+		return "", fmt.Errorf("No tasks available, retrying...")
+	}
+
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("Unexpected status code: %v", resp.StatusCode)
@@ -105,7 +110,7 @@ func (wb *WorkerBehavior) getImgPath() (string, error) {
 		return "", fmt.Errorf("Failed to decode response: %v", err)
 	}
 
-	// Check if there are no more images to process
+	// Check if all images have been processed
 	if result["EOF"] == "true" {
 		return "", io.EOF
 	}
