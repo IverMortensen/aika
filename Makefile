@@ -44,6 +44,15 @@ final: build-final
 		-agent-id test_initial \
 		-log-file ./data/logs/test_final.log
 
+build-lc:
+	go build -o ./bin/inf_3203_local_controller ./cmd/local_controller/main.go
+
+lc:
+	./bin/inf_3203_local_controller \
+	-config ./static/configs/lc-test.json
+
+all: build-initial build-worker build-final build-lc
+
 clean:
 	rm -f data/logs/*.log
 	rm -f data/wal/*.wal
