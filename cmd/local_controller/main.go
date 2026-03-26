@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"log"
@@ -28,6 +29,7 @@ type config struct {
 func main() {
 	configFilePath := flag.String("config", "", "Path to config file describing what agents to run")
 	logFile := flag.String("log-file", "./data/logs/local-controller", "Path to log file")
+	statusPort := flag.String("status-port", "7000", "Port for the status HTTP server")
 	flag.Parse()
 	if *configFilePath == "" {
 		log.Fatal("--config is required")
@@ -56,6 +58,9 @@ func main() {
 		return
 	}
 
+	// Start status server
+	go startStatusServer(*statusPort)
+
 	// Start sending heartbeats to cluster controllers
 	if len(cfg.ClusterControllers) > 0 {
 		go sendHeartbeats(cfg.ClusterControllers)
@@ -75,13 +80,32 @@ func main() {
 	wg.Wait()
 }
 
+func startStatusServer(port string) {
+	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+	log.Printf("[local-controller] Status server listening on :%s", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Fatalf("[local-controller] Status server failed: %v", err)
+	}
+}
+
 // Periodically send heartbeat to cluster controllers
 func sendHeartbeats(controllers []string) {
 	client := &http.Client{Timeout: heartbeatTimeout}
 	for {
 		responded := false
 		for _, addr := range controllers {
-			resp, err := client.Post("http://"+addr+"/heartbeat", "application/json", nil)
+			hostname, err := os.Hostname()
+			if err != nil {
+				hostname = "unknown"
+			}
+			payload := map[string]string{"lc_id": hostname}
+			body, _ := json.Marshal(payload)
+			resp, err := client.Post("http://"+addr+"/heartbeat", "application/json", bytes.NewReader(body))
+
 			if err != nil {
 				log.Printf("CC at %s unreachable: %v", addr, err)
 				continue
