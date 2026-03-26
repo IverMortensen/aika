@@ -14,9 +14,9 @@ CMD_DIR="./cmd"
 # --- Compile -----------------------------------------------------------------
 echo "Compiling binaries..."
 
-go build -o "$BIN_DIR/inf_3203_initial_agent"    "$CMD_DIR/initial-agent/main.go"
-go build -o "$BIN_DIR/inf_3203_worker_agent"     "$CMD_DIR/worker-agent/main.go"
-go build -o "$BIN_DIR/inf_3203_final_agent"      "$CMD_DIR/final-agent/main.go"
+go build -o "$BIN_DIR/inf_3203_initial_agent" "$CMD_DIR/initial-agent/main.go"
+go build -o "$BIN_DIR/inf_3203_worker_agent" "$CMD_DIR/worker-agent/main.go"
+go build -o "$BIN_DIR/inf_3203_final_agent" "$CMD_DIR/final-agent/main.go"
 go build -o "$BIN_DIR/inf_3203_local_controller" "$CMD_DIR/local_controller/main.go"
 
 echo "Done."
@@ -29,7 +29,7 @@ get_available_nodes() {
     local hosts
     hosts="$(shuf /share/compute-nodes.txt)"
 
-    # Filter out excluded nodes and the c6 GPU nodes
+    local filtered=()
     for H in $hosts; do
         if echo "$H" | grep -qE '^c6-'; then
             continue
@@ -37,9 +37,11 @@ get_available_nodes() {
         if grep -qF "$H" /share/exclude-nodes.txt 2>/dev/null; then
             continue
         fi
-        echo "$H"
-    done | while read -r H; do
-        # Only include nodes with 1min load below MAX_LOAD
+        filtered+=("$H")
+    done
+
+    # Run all SSH checks in parallel, collect results, then sort
+    for H in "${filtered[@]}"; do
         ssh -o ConnectTimeout=1 -o ConnectionAttempts=1 -x "$H" \
             "cat /proc/loadavg /proc/sys/kernel/hostname | tr '\n' ' ' | awk -v max_load=$MAX_LOAD '\$1+0 < max_load {printf \"%s %s\n\", \$1, \$6}'" 2>/dev/null &
     done | sort -n | awk '{print $2}' | sed 's/.ifi.uit.no//'
@@ -59,5 +61,3 @@ for node in "${AVAILABLE_NODES[@]}"; do
 done
 echo "Done."
 echo ""
-
-
