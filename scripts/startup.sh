@@ -11,6 +11,16 @@ MAX_LOAD=0.4
 BIN_DIR="./bin"
 CMD_DIR="./cmd"
 
+# --- Clean up ----------------------------------------------------------------
+echo "Cleaning up..."
+
+rm -f data/logs/*.log
+rm -f data/wal/*.wal
+rm -f data/result.json
+
+echo "Done."
+echo ""
+
 # --- Compile -----------------------------------------------------------------
 echo "Compiling binaries..."
 
