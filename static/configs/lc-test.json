@@ -1,71 +1,74 @@
-[
-	{
-		"Binary": "./bin/inf_3203_initial_agent",
-		"Flags": [
-			"-image-dir",
-			"./static/test_images/",
-			"-wal-path",
-			"./data/wal/initial.wal",
-			"-server-address",
-			"0.0.0.0:5001",
-			"-agent-id",
-			"test_initial",
-			"-log-file",
-			"./data/logs/test_initial.log"
-		]
-	},
-	{
-		"Binary": "./bin/inf_3203_worker_agent",
-		"Flags": [
-			"-ia-address",
-			"0.0.0.0:5001",
-			"-fa-address",
-			"0.0.0.0:6000",
-			"-agent-id",
-			"test_worker_1",
-			"-log-file",
-			"./data/logs/test_worker_1.log"
-		]
-	},
-	{
-		"Binary": "./bin/inf_3203_worker_agent",
-		"Flags": [
-			"-ia-address",
-			"0.0.0.0:5001",
-			"-fa-address",
-			"0.0.0.0:6000",
-			"-agent-id",
-			"test_worker_2",
-			"-log-file",
-			"./data/logs/test_worker_2.log"
-		]
-	},
-	{
-		"Binary": "./bin/inf_3203_worker_agent",
-		"Flags": [
-			"-ia-address",
-			"0.0.0.0:5001",
-			"-fa-address",
-			"0.0.0.0:6000",
-			"-agent-id",
-			"test_worker_3",
-			"-log-file",
-			"./data/logs/test_worker_3.log"
-		]
-	},
-	{
-		"Binary": "./bin/inf_3203_final_agent",
-		"Flags": [
-			"-output-path",
-			"./data/result.json",
-			"-wal-path",
-			"./data/wal/final.wal",
-			"-server-address",
-			"0.0.0.0:6000",
-			"-agent-id",
-			"test_final",
-			"-log-file",
-			"./data/logs/test_final.log"
-		]
-	}
-]
+{
+	"cluster_controllers": [],
+	"agents": [
+		{
+			"binary": "./bin/inf_3203_initial_agent",
+			"flags": [
+				"-image-dir",
+				"./static/test_images/",
+				"-wal-path",
+				"./data/wal/initial.wal",
+				"-server-address",
+				"0.0.0.0:5001",
+				"-agent-id",
+				"test_initial",
+				"-log-file",
+				"./data/logs/test_initial.log"
+			]
+		},
+		{
+			"binary": "./bin/inf_3203_worker_agent",
+			"flags": [
+				"-ia-address",
+				"0.0.0.0:5001",
+				"-fa-address",
+				"0.0.0.0:6000",
+				"-agent-id",
+				"test_worker_1",
+				"-log-file",
+				"./data/logs/test_worker_1.log"
+			]
+		},
+		{
+			"binary": "./bin/inf_3203_worker_agent",
+			"flags": [
+				"-ia-address",
+				"0.0.0.0:5001",
+				"-fa-address",
+				"0.0.0.0:6000",
+				"-agent-id",
+				"test_worker_2",
+				"-log-file",
+				"./data/logs/test_worker_2.log"
+			]
+		},
+		{
+			"binary": "./bin/inf_3203_worker_agent",
+			"flags": [
+				"-ia-address",
+				"0.0.0.0:5001",
+				"-fa-address",
+				"0.0.0.0:6000",
+				"-agent-id",
+				"test_worker_3",
+				"-log-file",
+				"./data/logs/test_worker_3.log"
+			]
+		},
+		{
+			"binary": "./bin/inf_3203_final_agent",
+			"flags": [
+				"-output-path",
+				"./data/result.json",
+				"-wal-path",
+				"./data/wal/final.wal",
+				"-server-address",
+				"0.0.0.0:6000",
+				"-agent-id",
+				"test_final",
+				"-log-file",
+				"./data/logs/test_final.log"
+			]
+		}
+	]
+}
