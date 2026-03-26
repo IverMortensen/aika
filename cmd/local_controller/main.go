@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"sync"
@@ -11,10 +12,17 @@ import (
 )
 
 const restartDelay = 1 * time.Second
+const heartbeatInterval = 10 * time.Second
+const heartbeatTimeout = 3 * time.Second
 
 type agentConfig struct {
 	Binary string   `json:"binary"`
 	Flags  []string `json:"flags"`
+}
+
+type config struct {
+	ClusterControllers []string      `json:"cluster_controllers"`
+	Agents             []agentConfig `json:"agents"`
 }
 
 func main() {
@@ -26,7 +34,10 @@ func main() {
 	}
 
 	// Set up logging
-	setUpLogging(*logFile)
+	err := setUpLogging(*logFile)
+	if err != nil {
+		log.Printf("Failed to set up logging: %v", err)
+	}
 
 	// Open config file
 	configFile, err := os.ReadFile(*configFilePath)
@@ -34,20 +45,27 @@ func main() {
 		log.Printf("Failed to open config file: %v", err)
 	}
 
-	// Extract agent configurations
-	var agentConfigs []agentConfig
-	if err := json.Unmarshal(configFile, &agentConfigs); err != nil {
+	// Extract content of config file
+	var cfg config
+	if err := json.Unmarshal(configFile, &cfg); err != nil {
 		log.Printf("Failed to decode config file: %v", err)
 		return
 	}
-	if len(agentConfigs) < 1 {
+	if len(cfg.Agents) < 1 {
 		log.Printf("No agent configurations in config file.")
 		return
 	}
 
+	// Start sending heartbeats to cluster controllers
+	if len(cfg.ClusterControllers) > 0 {
+		go sendHeartbeats(cfg.ClusterControllers)
+	} else {
+		log.Printf("No cluster controllers given, skipping heartbeats")
+	}
+
 	// Start agents
 	var wg sync.WaitGroup
-	for _, config := range agentConfigs {
+	for _, config := range cfg.Agents {
 		wg.Add(1)
 		go func(c agentConfig) {
 			defer wg.Done()
@@ -57,6 +75,30 @@ func main() {
 	wg.Wait()
 }
 
+// Periodically send heartbeat to cluster controllers
+func sendHeartbeats(controllers []string) {
+	client := &http.Client{Timeout: heartbeatTimeout}
+	for {
+		responded := false
+		for _, addr := range controllers {
+			resp, err := client.Post("http://"+addr+"/heartbeat", "application/json", nil)
+			if err != nil {
+				log.Printf("CC at %s unreachable: %v", addr, err)
+				continue
+			}
+			resp.Body.Close()
+			log.Printf("Heartbeat acknowledged by CC at %s", addr)
+			responded = true
+			break
+		}
+		if !responded {
+			log.Println("No cluster controllers responded to heartbeat, continuing anyway")
+		}
+		time.Sleep(heartbeatInterval)
+	}
+}
+
+// Start and supervise a single agent
 func supervise(config agentConfig) {
 	for {
 		cmd := exec.Command(config.Binary, config.Flags...)
@@ -71,7 +113,7 @@ func supervise(config agentConfig) {
 		}
 
 		// Agent failed, wait a bit and restart
-		log.Printf("'%s' failed, restarting in %vs", config.Binary, restartDelay)
+		log.Printf("'%s' failed, restarting in %v", config.Binary, restartDelay)
 		time.Sleep(restartDelay)
 	}
 }
