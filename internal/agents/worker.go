@@ -153,7 +153,7 @@ func (wb *WorkerBehavior) postJSON(url string, data map[string]string) error {
 }
 
 func runModel(imgPath string) (string, error) {
-	cmd := exec.Command("./model/venv/bin/python", "./model/classify.py", imgPath)
+	cmd := exec.Command("/mnt/users/imo059/3203/aika/model/venv/bin/python", "/mnt/users/imo059/3203/aika/model/classify.py", imgPath)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

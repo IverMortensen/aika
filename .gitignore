@@ -1,7 +1,9 @@
 bin/*
 data/logs/*
 data/wal/*
+data/lc_configs/*
 data/*.json
+data/*.txt
 
 .DS_Store
 

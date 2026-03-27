@@ -66,6 +66,8 @@ func NewFinalBehavior(outputPath string, walPath string, serverAddress string) (
 }
 
 func (fb *FinalBehavior) Run(ctx context.Context) error {
+	log.Printf("Starting server on %v", fb.server.Addr)
+
 	// Start server
 	go func() {
 		if err := fb.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

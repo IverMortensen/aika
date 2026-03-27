@@ -2,6 +2,7 @@ MODEL_DIR := ./model/
 VENV_DIR := $(MODEL_DIR)/venv/
 PYTHON := $(VENV_DIR)/bin/python
 PIP := $(VENV_DIR)/bin/pip
+cleanup_script := ./scripts/cleanup.sh
 
 WORKER_NAME ?= test_worker
 
@@ -54,6 +55,13 @@ lc:
 all: build-initial build-worker build-final build-lc
 
 clean:
+	./scripts/cleanup.sh
 	rm -f data/logs/*.log
 	rm -f data/wal/*.wal
+	rm -f data/lc_configs/*.json
 	rm data/result.json
+	rm data/activehostport.txt
+	rm data/worker_nodes.txt
+	
+run:
+	./scripts/startup.sh
