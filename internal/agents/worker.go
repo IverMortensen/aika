@@ -20,13 +20,16 @@ type WorkerBehavior struct {
 	iaAddress string
 	faAddress string
 	client    *http.Client
+	modelPath string
 }
 
-func NewWorkerBehavior(iaAddress string, faAddress string) (*WorkerBehavior, error) {
+func NewWorkerBehavior(iaAddress string, faAddress string, modelPath string) (*WorkerBehavior, error) {
+	log.Printf("Model path: %v", modelPath)
 	wb := &WorkerBehavior{
 		client:    &http.Client{Timeout: 10 * time.Second},
 		iaAddress: iaAddress,
 		faAddress: faAddress,
+		modelPath: modelPath,
 	}
 
 	return wb, nil
@@ -152,8 +155,8 @@ func (wb *WorkerBehavior) postJSON(url string, data map[string]string) error {
 	return nil
 }
 
-func runModel(imgPath string) (string, error) {
-	cmd := exec.Command("/mnt/users/imo059/3203/aika/model/venv/bin/python", "/mnt/users/imo059/3203/aika/model/classify.py", imgPath)
+func (wb *WorkerBehavior) runModel(imgPath string) (string, error) {
+	cmd := exec.Command(wb.modelPath+"/venv/bin/python", wb.modelPath+"/classify.py", imgPath)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

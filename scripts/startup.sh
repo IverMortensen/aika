@@ -5,7 +5,7 @@
 # =============================================================================
 
 # --- Configuration -----------------------------------------------------------
-NUM_CC_NODES=3 # Should be odd for Raft majority voting
+NUM_CC_NODES=5 # Should be odd for Raft majority voting
 MAX_LOAD=0.4
 
 # --- Directories -------------------------------------------------------------

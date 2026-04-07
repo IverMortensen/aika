@@ -13,10 +13,11 @@ func main() {
 	faAddress := flag.String("fa-address", ":6000", "Address of the final agent's server.")
 	agentId := flag.String("agent-id", "worker-agent", "Worker agent's id")
 	logFile := flag.String("log-file", "./data/logs/worker-agent.log", "Path to log file.")
+	modelPath := flag.String("model-path", "../model", "Path to python image model folder.")
 	flag.Parse()
 
 	// Create behavior of an worker agent
-	behavior, err := agents.NewWorkerBehavior(*iaAddress, *faAddress)
+	behavior, err := agents.NewWorkerBehavior(*iaAddress, *faAddress, *modelPath)
 	if err != nil {
 		log.Fatalf("Failed to create behavior for worker agent: %v", err)
 	}
