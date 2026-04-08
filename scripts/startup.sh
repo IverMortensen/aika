@@ -6,25 +6,26 @@
 
 # --- Configuration -----------------------------------------------------------
 NUM_CC_NODES=5 # Should be odd for Raft majority voting
-MAX_LOAD=0.4
+MAX_LOAD=50.0
 
 # --- Directories -------------------------------------------------------------
-PROJECT_DIR="/mnt/users/imo059/3203/aika/"
+PROJECT_DIR=$(pwd)
 BIN_DIR="$PROJECT_DIR/bin"
 CMD_DIR="$PROJECT_DIR/cmd"
 DATA_DIR="$PROJECT_DIR/data"
 RAFT_DIR="$PROJECT_DIR/raft"
+MODEL_DIR="$PROJECT_DIR/model"
 
 # --- Clean up ----------------------------------------------------------------
 echo "Cleaning up..."
 
-rm -f "$DATA_DIR/logs/*.log"
-rm -f "$DATA_DIR/wal/*.wal"
-rm -f "$DATA_DIR/lc_configs/*.json"
-rm -f "$DATA_DIR/result.json"
-rm -f "$DATA_DIR/activehostport.txt"
-rm -f "$DATA_DIR/worker_nodes.txt"
-
+"$PROJECT_DIR/scripts/cleanup.sh" # Kill nodes used in last run
+rm -f "$DATA_DIR"/logs/*.log
+rm -f "$DATA_DIR"/wal/*.wal
+rm -f "$DATA_DIR"/lc_configs/*.json
+rm -f "$DATA_DIR"/result.json
+rm -f "$DATA_DIR"/activehostport.txt
+rm -f "$DATA_DIR"/worker_nodes.txt
 echo "Done."
 echo ""
 
@@ -35,6 +36,20 @@ go build -o "$BIN_DIR/inf_3203_initial_agent" "$CMD_DIR/initial-agent/main.go"
 go build -o "$BIN_DIR/inf_3203_worker_agent" "$CMD_DIR/worker-agent/main.go"
 go build -o "$BIN_DIR/inf_3203_final_agent" "$CMD_DIR/final-agent/main.go"
 go build -o "$BIN_DIR/inf_3203_local_controller" "$CMD_DIR/local_controller/main.go"
+
+echo "Done."
+echo ""
+
+# --- Set up Python venv for image model --------------------------------------
+echo "Setting up image model..."
+
+if [ ! -d "$MODEL_DIR/venv" ]; then
+    python3.12 -m venv "$MODEL_DIR/venv/"
+    "$MODEL_DIR/venv/bin/pip" install \
+        --no-input \
+        --disable-pip-version-check \
+        -r "$MODEL_DIR/requirements.txt"
+fi
 
 echo "Done."
 echo ""
@@ -140,7 +155,7 @@ for ENDPOINT in "${CC_ENDPOINTS[@]}"; do
 
     echo "    Starting CC on $HOST:$PORT"
 
-    ssh -n "$USER@$HOST" "
+    ssh -f -n "$USER@$HOST" "
         mkdir -p $DATA_DIR/logs &&
         cd $RAFT_DIR/src &&
         nohup python3 inf_3203_start_raft_node.py \
@@ -148,9 +163,8 @@ for ENDPOINT in "${CC_ENDPOINTS[@]}"; do
             $PORT \
             $PROJECT_DIR \
         > $DATA_DIR/logs/cc_${HOST}.log 2>&1 < /dev/null &
-    " &
+    "
 done
-wait
 
 echo "Done."
 echo ""
