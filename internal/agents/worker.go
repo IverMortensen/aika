@@ -66,7 +66,7 @@ func (wb *WorkerBehavior) Run(ctx context.Context) error {
 		log.Printf("Received image: %v", imgPath)
 
 		// Do the work
-		res, err := runModel(imgPath)
+		res, err := wb.runModel(imgPath)
 		if err != nil {
 			log.Printf("Failed to run model: %v", err)
 			return err
