@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"log"
@@ -13,8 +12,6 @@ import (
 )
 
 const restartDelay = 1 * time.Second
-const heartbeatInterval = 10 * time.Second
-const heartbeatTimeout = 3 * time.Second
 
 type agentConfig struct {
 	Binary string   `json:"binary"`
@@ -61,13 +58,6 @@ func main() {
 	// Start status server
 	go startStatusServer(*statusPort)
 
-	// Start sending heartbeats to cluster controllers
-	if len(cfg.ClusterControllers) > 0 {
-		go sendHeartbeats(cfg.ClusterControllers)
-	} else {
-		log.Printf("No cluster controllers given, skipping heartbeats")
-	}
-
 	// Start agents
 	var wg sync.WaitGroup
 	for _, config := range cfg.Agents {
@@ -92,49 +82,16 @@ func startStatusServer(port string) {
 	}
 }
 
-// Periodically send heartbeat to cluster controllers
-func sendHeartbeats(controllers []string) {
-	client := &http.Client{Timeout: heartbeatTimeout}
-	for {
-		responded := false
-		for _, addr := range controllers {
-			hostname, err := os.Hostname()
-			if err != nil {
-				hostname = "unknown"
-			}
-			payload := map[string]string{"lc_id": hostname}
-			body, _ := json.Marshal(payload)
-			resp, err := client.Post("http://"+addr+"/heartbeat", "application/json", bytes.NewReader(body))
-
-			if err != nil {
-				log.Printf("CC at %s unreachable: %v", addr, err)
-				continue
-			}
-			resp.Body.Close()
-			log.Printf("Heartbeat acknowledged by CC at %s", addr)
-			responded = true
-			break
-		}
-		if !responded {
-			log.Println("No cluster controllers responded to heartbeat, continuing anyway")
-		}
-		time.Sleep(heartbeatInterval)
-	}
-}
-
 // Start and supervise a single agent
 func supervise(config agentConfig) {
+	log.Printf("Monitoring agent: %v", config.Binary)
 	for {
 		cmd := exec.Command(config.Binary, config.Flags...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
 		// Start the agent
-		err := cmd.Run()
-		if err == nil { // Agent exits voluntary
-			log.Printf("'%s' complete", config.Binary)
-			return
-		}
+		cmd.Run()
 
 		// Agent failed, wait a bit and restart
 		log.Printf("'%s' failed, restarting in %v", config.Binary, restartDelay)
