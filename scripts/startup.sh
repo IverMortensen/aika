@@ -7,6 +7,7 @@
 # --- Configuration -----------------------------------------------------------
 NUM_CC_NODES=5 # Should be odd for Raft majority voting
 MAX_LOAD=50.0
+MAX_NODES=10
 
 # --- Directories -------------------------------------------------------------
 PROJECT_DIR=$(pwd)
@@ -80,6 +81,7 @@ get_available_nodes() {
 }
 
 mapfile -t AVAILABLE_NODES < <(get_available_nodes)
+AVAILABLE_NODES=("${AVAILABLE_NODES[@]:0:$MAX_NODES}")
 
 if [ ${#AVAILABLE_NODES[@]} -eq 0 ]; then
     echo "No available nodes found, exiting."
