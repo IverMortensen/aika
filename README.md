@@ -19,7 +19,15 @@ The system is composed of three main components:
 - Go (for compiling agents and local controller)
 - Python 3.12 (for the cluster controller and image model)
 - SSH access to the cluster nodes
-- Access to `/share/compute-nodes.txt` on the cluster
+
+### Cluster
+
+This system is designed for the UiT IFI cluster and expects the cluster-specific layout:
+- A list of available nodes at `/share/compute-nodes.txt`
+- The unlabelled image dataset at `/share/inf3203/unlabeled_images`
+
+If deployed on a different cluster, these paths would need to be updated to match the
+target environment.
 
 ## Usage
 
