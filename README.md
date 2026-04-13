@@ -47,6 +47,17 @@ This will:
 6. Start the Cluster Controller / Raft nodes
 7. Wait for the CC nodes to become responsive
 
+### Configuration
+
+Modify the following values at the top of the `./scripts/startup.sh` file:
+
+`NUM_CC_NODES` - Changes the number of Cluster Controllers, or raft nodes.
+
+`MAX_LOAD` - Filters out nodes with a higher 1min CPU load than the given value.
+
+`MAX_NODES` - Caps the number of nodes that the system will use.
+Includes CC nodes, so should be set higher than `NUM_CC_NODES`.
+
 ### Stop the system
 
 ```bash
@@ -62,3 +73,10 @@ Kills all Aika processes (prefixed `inf_3203_`) started by the current user acro
 ```
 
 Kills all Aika processes on the specified nodes only.
+
+## Results
+
+The labeled images are stored in the file `./data/result.json`.
+The file is continously updated as more images are lableled.
+The data is stored with an image label as the key and the value is a list of image paths with the given label.
+
